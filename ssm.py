@@ -26,7 +26,6 @@ To install:
 #-------------------------------------
 
 import os
-import re
 import shutil
 import zipfile
 import xml.etree.ElementTree as ET
@@ -410,22 +409,13 @@ class ShotSheetMaker:
 
         # Sort selected sequences by name
         try:
-            sequence_names = [str(seq.name)[1:-1] for seq in self.selection]
-            sequence_names.sort()
+            sorted_sequences = sorted(
+                self.selection,
+                key=lambda s: str(s.name)[1:-1]
+            )
         except Exception as e:
             show_error(f'Failed to sort sequences: {e}')
             safe_log(f'Error sorting sequences: {e}')
-            return
-
-        sorted_sequences = []
-        try:
-            for name in sequence_names:
-                for seq in self.selection:
-                    if str(seq.name)[1:-1] == name:
-                        sorted_sequences.append(seq)
-        except Exception as e:
-            show_error(f'Failed to build sorted sequence list: {e}')
-            safe_log(f'Error building sorted sequence list: {e}')
             return
 
         # Create one workbook per sequence
@@ -486,6 +476,8 @@ class ShotSheetMaker:
 
         Export thumbnails and get shot info for all shots in selected sequence
         """
+        # remember which sequence the sheet is for
+        self.current_sequence = sequence
 
         def thumbnail_res():
             seq_height = sequence.height
@@ -599,6 +591,64 @@ class ShotSheetMaker:
 
                 self.shot_dict.update({shot_name : self.clip_info_list})
 
+    def _sequence_meta(self, sequence) -> dict:
+        """Collect and format useful sequence metadata from Flame, safely."""
+        def _flt(x: object) -> str:
+            s = str(x)
+            if len(s) >= 2 and (s[0] == s[-1] == "'" or s[0] == s[-1] == '"'):
+                return s[1:-1]
+            return s
+
+        # Project
+        project = _flt(getattr(self, 'flame_project_name', ''))
+
+        # Resolution
+        width = getattr(sequence, 'width', None)
+        height = getattr(sequence, 'height', None)
+        resolution = f"{width} x {height}" if width and height else "Unknown"
+
+        # Frame rate
+        fps = (
+            getattr(sequence, 'frame_rate', None)
+            or getattr(sequence, 'fps', None)
+            or getattr(sequence, 'rate', None)
+        )
+        # Coerce common PyFlame wrappers or numerics to a string
+        fps_str = _flt(fps) if fps is not None else "Unknown"
+
+        # Bit depth (varies by Flame version/schema)
+        bit_depth = (
+            getattr(sequence, 'bit_depth', None)
+            or getattr(sequence, 'bitDepth', None)
+            or getattr(sequence, 'depth', None)
+        )
+        bit_depth_str = _flt(bit_depth) if bit_depth is not None else "Unknown"
+
+        # Duration (prefer a PyTime-like; fall back to compute from segments)
+        duration = getattr(sequence, 'duration', None)
+        if duration is not None:
+            duration_str = _flt(duration)
+        else:
+            # Coarse fallback from segment bounds
+            try:
+                segs = [s for s in sequence.versions[0].tracks[0].segments if s.type == 'Video Segment']
+                if segs:
+                    start = segs[0].record_in
+                    end = segs[-1].record_out
+                    duration_str = f"{_flt(end - start)}"
+                else:
+                    duration_str = "Unknown"
+            except Exception:
+                duration_str = "Unknown"
+
+        return {
+            "project": project or "Unknown",
+            "resolution": resolution,
+            "fps": fps_str,
+            "bit_depth": bit_depth_str,
+            "duration": duration_str,
+        }
+
     def create_sequence_worksheet(self, workbook, seq_name):
 
         def add_clip_info_column(clip_info) -> None:
@@ -691,20 +741,29 @@ class ShotSheetMaker:
 
                 base_row += 4  # Move to next shot's base position
 
-        # Define department list once for reuse
+        # Define department list for reuse
         departments = ['Tracking', 'Roto', 'Paint', 'DMP', 'Comp', 'CG']
 
         # Create worksheet
         worksheet = workbook.add_worksheet(seq_name)
         worksheet.set_column('A:A', self.column_width * 1.3)  # Thumbnail column - 30% wider
         worksheet.set_column('B:B', 20)  # Shot info column - narrower
-        worksheet.set_column('C:H', 25)  # Department columns
+        worksheet.set_column('C:G', 25)  # Department columns
 
-        # Define cell formats with new color scheme
+        meta_format = workbook.add_format({
+            'font_name': 'Helvetica',
+            'bg_color': '#2C2C2C',  
+            'font_color': 'white',
+            'align': 'center',
+            'valign': 'vcenter',
+            'text_wrap': True,
+            'font_size': 10,
+        })
+
         # Separate format for title row (dark gray)
         title_format = workbook.add_format({
             'font_name': 'Helvetica',
-            'bg_color': '#2C2C2C',  # Dark gray for title
+            'bg_color': '#2C2C2C',  
             'font_color': 'white',
             'bold': True,
             'align': 'center',
@@ -784,14 +843,42 @@ class ShotSheetMaker:
             'text_wrap': True
         })
 
-        # Add basic column headers
-        worksheet.write(0, 0, 'Thumbnail', header_format)  # A1
-        worksheet.write(0, 1, 'Shot Info', header_format)  # B1
-        worksheet.write(0, 2, 'Departments and Tasks', header_format)  # Merge remaining header cells
-        worksheet.merge_range(0, 2, 0, 7, 'Departments and Tasks', header_format)
+        # Row indices for layout
+        TITLE_ROW = 0
+        META_ROW = 1
+        TABLE_HEADER_ROW = 3
+        FIRST_SHOT_ROW = TABLE_HEADER_ROW + 1
 
-        # Process each shot starting from row 1
-        current_row = 1
+        #Big Title Row
+        worksheet.set_row(TITLE_ROW, 32) 
+        worksheet.merge_range(TITLE_ROW, 0, TITLE_ROW, 6, seq_name, title_format)
+        
+        # Metadata row
+        meta = self._sequence_meta(self.current_sequence)
+        meta_text = (
+            f"Project: {meta['project']}   •   "
+            f"Resolution: {meta['resolution']}   •   "
+            f"FPS: {meta['fps']}   •   "
+            f"Bit Depth: {meta['bit_depth']}   •   "
+            f"Duration: {meta['duration']}"
+        )
+        worksheet.set_row(META_ROW, 20)
+        worksheet.merge_range(META_ROW, 0, META_ROW, 6, meta_text, meta_format)
+
+        # Divider row after sequence metadata
+        SPACER_ROW = META_ROW + 1
+        worksheet.set_row(SPACER_ROW, 15)
+        black_fill = workbook.add_format({'bg_color': '#000000'})
+        
+        for col in range(7):
+            worksheet.write_blank(SPACER_ROW, col, None, black_fill)
+
+        # Add column headers
+        worksheet.write(TABLE_HEADER_ROW, 0, 'Thumbnail', header_format)
+        worksheet.write(TABLE_HEADER_ROW, 1, 'Shot Info', header_format)
+        worksheet.merge_range(TABLE_HEADER_ROW, 1, TABLE_HEADER_ROW, 6, 'Departments and Tasks', header_format) 
+
+        current_row = FIRST_SHOT_ROW
 
         # Process each shot
         for shot_name in self.shot_dict:
@@ -852,11 +939,6 @@ class ShotSheetMaker:
             # Write shot name merged across both name and buffer cell
             worksheet.merge_range(current_row, 1, current_row + 1, 2, shot_name, shot_name_format)  # Shot name merged across two columns
 
-            # Write numbers 1-5 in the top row cells after the buffer
-            for i in range(5):
-                worksheet.write(current_row, i + 3, str(i + 1), shot_name_format)
-
-            # Write metadata labels directly in top row cells
             # Define formats for metadata
             metadata_header_format = workbook.add_format({
                 'font_name': 'Helvetica',
@@ -892,7 +974,7 @@ class ShotSheetMaker:
             })
 
             # Write metadata labels in top row with adjusted height
-            metadata_labels = ['Source Name', 'Source TC I/O', 'Seq TC I/O', 'Length frames', '']
+            metadata_labels = ['Source Name', 'Source TC I/O', 'Seq TC I/O', 'Length frames']
             worksheet.set_row(current_row, 30)  # Double the height for header row
             for i, label in enumerate(metadata_labels):
                 worksheet.write(current_row, i + 3, label, metadata_header_format)
@@ -926,14 +1008,9 @@ class ShotSheetMaker:
             worksheet.write(current_row + 1, 4, source_tc, metadata_value_format)
             worksheet.write(current_row + 1, 5, seq_tc, metadata_value_format)
             worksheet.write(current_row + 1, 6, frame_count, metadata_value_format)
-            worksheet.write(current_row + 1, 7, '', metadata_value_format)  # Empty cell with metadata formatting
+            # worksheet.write(current_row + 1, 7, '', metadata_value_format)  # Empty cell with metadata formatting
             for col in range(3, 7):
                 worksheet.write(current_row + 1, col, '', shot_name_format)
-            
-            # Write remaining info below the merged shot name
-            worksheet.write(current_row + 2, 1, 'Task:', task_header_format)    # Task (darker purple)
-            worksheet.write(current_row + 3, 1, 'Status:', label_format)        # Status (light purple)
-            worksheet.write(current_row + 4, 1, 'Artist:', label_format)        # Artist (light purple)
 
             # Add department labels for task row (Bold and centered)
             dept_format = workbook.add_format({
@@ -943,9 +1020,8 @@ class ShotSheetMaker:
                 'valign': 'vcenter'
             })
 
-            # Write department names in the task row (with darker purple background)
             # Write department names in task row using the pre-defined departments list
-            for col, dept in enumerate(departments, start=2):  # Start from column C (index 2)
+            for col, dept in enumerate(departments, start=1):  # Start from column C (index 2)
                 worksheet.write(current_row + 2, col, dept, dept_task_format)  # Write in task row with dark purple
 
             # Keep cells empty for Status and Artist rows, but don't merge
@@ -996,9 +1072,9 @@ class ShotSheetMaker:
             status_options = list(status_formats.keys())
             
             # Add dropdowns and format cells
-            for col in range(2, 8):  # Columns C through H
-                # Empty cells in top rows should use shot name format for consistency
+            for col in range(1, 7):  # Columns B through G
                 # Keep the top row for metadata labels
+                # CHATTY ASK
                 if current_row + 1 == current_row:  # Only clear second row
                     worksheet.write(current_row + 1, col, '', shot_name_format)
                 
@@ -1031,7 +1107,7 @@ class ShotSheetMaker:
             # Add conditional formatting for status cells
             for status, format_obj in status_formats.items():
                 if status != 'Not Started':  # Skip default format
-                    worksheet.conditional_format(current_row + 3, 2, current_row + 3, 7, {
+                    worksheet.conditional_format(current_row + 3, 1, current_row + 3, 6, {
                         'type': 'cell',
                         'criteria': 'equal to',
                         'value': f'"{status}"',
@@ -1069,14 +1145,11 @@ class ShotSheetMaker:
             worksheet.set_row(current_row + 5, 15)  #second number is pixel height
             
             # Add black divider across all columns
-            for col in range(8):  # Columns A through H
+            for col in range(7):  # Columns A through H
                 worksheet.write(current_row + 5, col, '', divider_format)
             
             # Move to next group (5 rows for content + 1 for divider)
             current_row += 6
-
-        # Add sequence name to header area using title_format
-        worksheet.merge_range(0, 0, 0, 7, seq_name, title_format)
 
 #-------------------------------------
 # [Scopes]
