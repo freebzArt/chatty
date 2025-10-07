@@ -28,9 +28,12 @@ To install:
 import os
 import shutil
 import zipfile
+import re
 import xml.etree.ElementTree as ET
 from collections import OrderedDict
-
+from datetime import datetime
+from pathlib import Path 
+import platform
 import flame
 from lib.pyflame_lib_shot_sheet_maker import *
 from xlsxwriter.utility import xl_rowcol_to_cell
@@ -273,7 +276,8 @@ class ShotSheetMaker:
         )
 
         self.export_path_label = PyFlameLabel(text='Export Path')
-        self.export_path_entry = PyFlameEntry(text=self.settings.export_path)
+        default_root = self._suggest_export_root(self.flame_project_name)
+        self.export_path_entry = PyFlameEntry(text=str(default_root))
 
         self.export_path_browse_button = PyFlameButton(text='Browse', connect=export_path_browse)
         self.create_button = PyFlameButton(text='Create', connect=save_config, color=Color.BLUE)
@@ -406,6 +410,15 @@ class ShotSheetMaker:
                     if image.endswith('.jpg'):
                         shutil.copy(os.path.join(self.temp_image_path, image), os.path.join(image_path, image))
 
+        # Decide auto export location based on project name
+        srvr_proj_name = str(self.flame_project_name)
+        export_root, used_server = self._resolve_export_root(srvr_proj_name)
+
+        # Reflect chosen path in the UI entry (so the user sees where it’s going)
+        try:
+            self.export_path_entry.text = str(export_root)
+        except Exception:
+            pass
 
         # Sort selected sequences by name
         try:
@@ -418,10 +431,31 @@ class ShotSheetMaker:
             safe_log(f'Error sorting sequences: {e}')
             return
 
+        # Use whatever the user left in the dialog
+        chosen_root = Path(self.export_path_entry.text)
+
+        # Try to create it; if we can’t, fallback to Desktop
+        try:
+            chosen_root.mkdir(parents=True, exist_ok=True)
+            export_root = chosen_root
+            used_fallback = False
+        except Exception:
+            now = datetime.now()
+            date_str = now.strftime("%Y%m%d")
+            time_str = now.strftime("%H%M")
+
+            desktop = Path.home() / "Desktop"
+            if not desktop.exists():
+                desktop = Path.home()
+
+            export_root = desktop / f"{self.flame_project_name}_shot_sheets" / date_str / time_str
+            export_root.mkdir(parents=True, exist_ok=True)
+            used_fallback = True
+
         # Create one workbook per sequence
         for sequence in sorted_sequences:
             seq_name = str(sequence.name)[1:-1]
-            xlsx_path = os.path.join(self.export_path_entry.text, f'{seq_name}.xlsx')
+            xlsx_path = os.path.join(str(export_root), f'{seq_name}.xlsx')
             safe_log(f'Creating workbook at {xlsx_path}')
 
             try:
@@ -458,14 +492,18 @@ class ShotSheetMaker:
         except Exception as e:
             safe_log(f'Error showing export complete message: {e}')
 
-        if self.settings.reveal_in_finder:
+        if used_fallback:
             try:
-                pyflame.open_in_finder(
-                    path=self.export_path_entry.text,
+                PyFlameMessageWindow(
+                    message=(
+                        "The job folder on the server was not accessible.\n\n"
+                        f"Saved to Desktop instead:\n{export_root}"
+                    ),
+                    title=f'{SCRIPT_NAME}: Server Unavailable',
+                    parent=self.window,
                 )
-                safe_log('Finder opened')
-            except Exception as e:
-                safe_log(f'Error opening Finder: {e}')
+            except Exception:
+                safe_log(f'Fallback to Desktop: {export_root}')
 
         safe_log('Done.')
 
@@ -590,6 +628,20 @@ class ShotSheetMaker:
                 print('\n')
 
                 self.shot_dict.update({shot_name : self.clip_info_list})
+
+    def _suggest_export_root(self, project_name: str) -> Path:
+        now = datetime.datetime.now()
+        date_str = now.strftime("%Y%m%d")
+        time_str = now.strftime("%H%M") 
+
+        system = platform.system()
+        if system == 'Darwin':
+            job_root = Path('/Volumes/vfx_1')
+        else:
+            job_root = Path('/home/jointadmin/mnt/vfx_1')  
+
+        return job_root / "pipeline" / "shot_tracker" / date_str / time_str 
+
 
     def _sequence_meta(self, sequence) -> dict:
         """Collect and format useful sequence metadata from Flame, safely."""
