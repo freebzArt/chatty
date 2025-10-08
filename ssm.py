@@ -245,7 +245,37 @@ class ShotSheetMaker:
 
         self.export_path_entry.set_focus()
 
-    #-------------------------------------
+    def _add_roster_sheet(self, workbook, initial_artists=None):
+        if initial_artists is None:
+            initial_artists = ["Rajesh", "Track"]
+        
+        roster = workbook.add_worksheet("Roster")
+
+        #Simple format
+        header_format = workbook.add_format({
+            'font_name': 'Helvetica', 
+            'bold': True, 
+            'bg_color': '#2C2C2C',
+            'font_color': 'white', 
+            'align': 'center', 
+            'valign': 'vcenter',  
+        })
+        note_format = workbook.add_format({
+            'font_name': 'Helvetica', 
+            'align': 'left'
+            })
+
+        roster.set_column('A:A', 28)
+        roster.write(0, 0, 'Artists (edit below)', header_format)
+        roster.write(1, 0, 'Not Assigned', note_format) # Default choice
+
+        # If initial artists is provided
+        row = 2
+        for name in initial_artists:
+            roster.write(row, 0, name, note_format)
+            row += 1
+
+        workbook.define_name('Artists', f'=Roster!$A$2:$A$200')
 
     def create_shot_sheets(self):
         """
@@ -324,7 +354,7 @@ class ShotSheetMaker:
         
         # Create one workbook per sequence
         for sequence in sorted_sequences:
-            seq_name = str(sequence.name)[1:-1]
+            seq_name = str(sequence.name)[1:-1] # trims quotes
             xlsx_path = os.path.join(str(export_root), f'{seq_name}.xlsx')
             safe_log(f'Creating workbook at {xlsx_path}')
 
@@ -332,6 +362,7 @@ class ShotSheetMaker:
                 workbook = xlsxwriter.Workbook(xlsx_path)
                 self.get_shots(sequence)
                 self.create_sequence_worksheet(workbook, seq_name)
+                self._add_roster_sheet(workbook)
                 workbook.close()
             except Exception as e:
                 show_error(f'Error creating workbook for {seq_name}: {e}')
@@ -593,6 +624,7 @@ class ShotSheetMaker:
         }
 
     def create_sequence_worksheet(self, workbook, seq_name):
+        from xlsxwriter.utility import xl_rowcol_to_cell
 
         # Define department list for reuse
         departments = ['Tracking', 'Roto', 'Paint', 'DMP', 'Comp', 'CG']
@@ -600,22 +632,12 @@ class ShotSheetMaker:
         # Create worksheet
         worksheet = workbook.add_worksheet(seq_name)
         worksheet.set_column('A:A', self.column_width * 1.3)  # Thumbnail column - 30% wider
-        worksheet.set_column('B:B', 20)  # Shot info column - narrower
-        worksheet.set_column('C:G', 25)  # Department columns
+        # worksheet.set_column('B:B', 20)  # Shot info column - narrower
+        worksheet.set_column('B:G', 25)  # Department columns
 
         #-------------------------------------
         # FORMATS   
         #-------------------------------------
-
-        meta_format = workbook.add_format({
-            'font_name': 'Helvetica',
-            'bg_color': '#2C2C2C',  
-            'font_color': 'white',
-            'align': 'center',
-            'valign': 'vcenter',
-            'text_wrap': True,
-            'font_size': 10,
-        })
 
         title_format = workbook.add_format({
             'font_name': 'Helvetica',
@@ -628,29 +650,29 @@ class ShotSheetMaker:
             'font_size': 14  
         })
 
+        meta_format = workbook.add_format({
+            'font_name': 'Helvetica',
+            'bg_color': '#2C2C2C',  
+            'font_color': 'white',
+            'align': 'center',
+            'valign': 'vcenter',
+            'text_wrap': True,
+            'font_size': 10,
+        })
+
         header_format = workbook.add_format({
             'font_name': 'Helvetica',
-            'bg_color': '#2C2C2C',  # Darker gray
+            'bg_color': '#2C2C2C',  
             'font_color': 'white',
             'bold': True,
             'align': 'center',
             'valign': 'vcenter',
             'text_wrap': True
         })
-
-        task_format = workbook.add_format({
-            'font_name': 'Helvetica',
-            'valign': 'vcenter',
-            'text_wrap': True
-        })
-
-        black_fill = workbook.add_format({
-            'bg_color': '#000000'
-        })
                 
         thumbnail_format = workbook.add_format({
             'font_name': 'Helvetica',
-            'bg_color': '#2C2C2C',  # Same dark gray as shot name
+            'bg_color': '#2C2C2C',  
             'font_color': 'white',
             'valign': 'vcenter'
         })
@@ -658,89 +680,83 @@ class ShotSheetMaker:
         shot_name_format = workbook.add_format({
             'font_name': 'Helvetica',
             'bold': True,
-            'font_size': 18,  # Increased to 18
+            'font_size': 18,  
             'align': 'center',
             'valign': 'vcenter',
             'text_wrap': True,
-            'bg_color': '#2C2C2C',  # Darker gray to match header style
-            'font_color': 'white',   # White text
-            'border': 1,             # Add subtle border
-            'border_color': '#404040' # Slightly lighter border color
+            'bg_color': '#2C2C2C',  
+            'font_color': 'white',   
+            'border': 1,             
+            'border_color': '#404040' 
         })
 
-        dept_task_format = workbook.add_format({
+        dept_label_format = workbook.add_format({
             'font_name': 'Helvetica',
-            'bg_color': '#2C2C2C',  # Darker purple
-            'font_color': 'white',   # White text
+            'bg_color': '#2C2C2C',  
+            'font_color': 'white',   
             'bold': True,
             'align': 'center',
             'valign': 'vcenter',
         })  
 
-                # Define formats for metadata
-        metadata_header_format = workbook.add_format({
+        metadata_label_format = workbook.add_format({
             'font_name': 'Helvetica',
-            'bg_color': '#2C2C2C',  # Dark gray background
-            'font_color': 'white',   # White text
+            'bg_color': '#2C2C2C',  
+            'font_color': 'white',   
             'bold': True,
             'align': 'center',
             'valign': 'vcenter',
             'text_wrap': True,
-            'font_size': 10  # Smaller font for headers
+            'font_size': 10  
         })
 
-        # Format for source name (with text clipping)
-        source_name_format = workbook.add_format({
-            'font_name': 'Helvetica',
-            'bg_color': '#404040',  # Lighter gray for values
-            'font_color': 'white',
-            'align': 'center',
-            'valign': 'vcenter',
-            'text_wrap': False,  # Disable text wrapping
-            'font_size': 9  # Even smaller font for values
-        })
-
-        # Format for other metadata values (with text wrapping)
         metadata_value_format = workbook.add_format({
             'font_name': 'Helvetica',
-            'bg_color': '#404040',  # Lighter gray for values
+            'bg_color': '#404040',  
             'font_color': 'white',
             'align': 'center',
             'valign': 'vcenter',
-            'text_wrap': True,
-            'font_size': 9  # Even smaller font for values
+            'text_wrap': False,
+            'font_size': 9  
         })
 
-                # Very light gray format for artist cells
-        artist_format = workbook.add_format({
+        artist_default_format = workbook.add_format({
             'font_name': 'Helvetica',
-            'bg_color': "#AFAFAF",  # Pure white
+            'bg_color': "#6F6F6F",
+            'font_color': 'white',
             'valign': 'vcenter',
-            'text_wrap': True
+            'text_wrap': True,
+        })        
+
+        artist_assigned_format = workbook.add_format({
+            'font_name': 'Helvetica',
+            'bg_color': "#B897CB",  
+            'font_color': 'white',
+            'bold': True,
+            'valign': 'vcenter',
+            'text_wrap': True,
         })
 
         status_cell_format = workbook.add_format({
             'font_name': 'Helvetica',
-            'bg_color': '#404040',  # Lighter gray
+            'bg_color': '#404040',  
             'font_color': 'white',
             'valign': 'vcenter',
             'text_wrap': True
         })
 
-        # Add a black divider row after each shot
         divider_format = workbook.add_format({
-            'bg_color': '#000000',  # Pure black
-            'font_color': '#000000'  # Hide any potential content
+            'bg_color': '#000000',  
+            'font_color': '#000000'  
         })
         
         # Row indices for layout
         TITLE_ROW = 0
         META_ROW = 1
-        TABLE_HEADER_ROW = 3
-        FIRST_SHOT_ROW = TABLE_HEADER_ROW + 1
+        FIRST_SHOT_ROW = META_ROW + 2 # leave one row for divider
 
         #Big Title Row
-        worksheet.set_row(TITLE_ROW, 32) 
+        worksheet.set_row(TITLE_ROW, 40) 
         worksheet.merge_range(TITLE_ROW, 0, TITLE_ROW, 6, seq_name, title_format)
         
         # Metadata row
@@ -752,21 +768,15 @@ class ShotSheetMaker:
             f"Bit Depth: {meta['bit_depth']}   •   "
             f"Duration: {meta['duration']}"
         )
-        worksheet.set_row(META_ROW, 20)
+        worksheet.set_row(META_ROW, 30)
         worksheet.merge_range(META_ROW, 0, META_ROW, 6, meta_text, meta_format)
 
         # Divider row after sequence metadata
         SPACER_ROW = META_ROW + 1
         worksheet.set_row(SPACER_ROW, 15)
 
-        
         for col in range(7):
-            worksheet.write_blank(SPACER_ROW, col, None, black_fill)
-
-        # Add column headers
-        worksheet.write(TABLE_HEADER_ROW, 0, 'Thumbnail', header_format)
-        worksheet.write(TABLE_HEADER_ROW, 1, 'Shot Info', header_format)
-        worksheet.merge_range(TABLE_HEADER_ROW, 1, TABLE_HEADER_ROW, 6, 'Departments and Tasks', header_format) 
+            worksheet.write_blank(SPACER_ROW, col, None, divider_format)
 
         current_row = FIRST_SHOT_ROW
 
@@ -801,7 +811,7 @@ class ShotSheetMaker:
             metadata_labels = ['Source Name', 'Source TC I/O', 'Seq TC I/O', 'Length frames']
             worksheet.set_row(current_row, 30)  # Double the height for header row
             for i, label in enumerate(metadata_labels):
-                worksheet.write(current_row, i + 3, label, metadata_header_format)
+                worksheet.write(current_row, i + 3, label, metadata_label_format)
 
             # Set increased height for metadata values row to accommodate two lines of timecode
             worksheet.set_row(current_row + 1, self.row_height * 0.35)  # Increased height for two lines
@@ -828,7 +838,7 @@ class ShotSheetMaker:
             worksheet.set_column(3, 3, 20)  # Set column D (index 3) to width 20
 
             # Write the metadata values
-            worksheet.write(current_row + 1, 3, source_name, source_name_format)  # Using clip format
+            worksheet.write(current_row + 1, 3, source_name, metadata_value_format)  # Using clip format
             worksheet.write(current_row + 1, 4, source_tc, metadata_value_format)
             worksheet.write(current_row + 1, 5, seq_tc, metadata_value_format)
             worksheet.write(current_row + 1, 6, frame_count, metadata_value_format)
@@ -838,7 +848,7 @@ class ShotSheetMaker:
 
             # Write department names in task row using the pre-defined departments list
             for col, dept in enumerate(departments, start=1):  # Start from column C (index 2)
-                worksheet.write(current_row + 2, col, dept, dept_task_format)  # Write in task row with dark purple
+                worksheet.write(current_row + 2, col, dept, dept_label_format)  # Write in task row with dark purple
             
             # Define status formats with colors
             status_formats = {
@@ -878,27 +888,43 @@ class ShotSheetMaker:
                     'bg_color': '#DC143C',  # Crimson red
                     'font_color': 'white'
                 })
-            }            # Status options for dropdown
+            }           
             status_options = list(status_formats.keys())
             
-            # Add dropdowns and format cells
-            for col in range(1, 7):  # Columns B through G
-                # Keep the top row for metadata labels
-                # CHATTY ASK
-                if current_row + 1 == current_row:  # Only clear second row
-                    worksheet.write(current_row + 1, col, '', shot_name_format)
-                
+            # Add status and artist dropdowns 
+            for col in range(1, 7):  
+
                 # Add dropdown validation to status cell
-                worksheet.data_validation(current_row + 3, col, current_row + 3, col, {
+                worksheet.data_validation(current_row + 3, col, current_row + 3, col, 
+                    {
                     'validate': 'list',
                     'source': status_options
-                })
+                    }
+                )
                 
-                # Write default status and empty artist cell with lighter gray background
-                worksheet.write(current_row + 3, col, 'Not Started', status_cell_format)  # Status row with default value
+                # Write default status 
+                worksheet.write(current_row + 3, col, 'Not Started', status_cell_format)  
 
                 # Write artist cell 
-                worksheet.write(current_row + 4, col, '', artist_format)
+                artist_row = current_row + 4
+                worksheet.data_validation(artist_row, col, artist_row, col, 
+                    {
+                        'validate': 'list',
+                        'source': '=Artists',
+                    }
+                )
+                # set default value for artist
+                worksheet.write(artist_row, col, 'Not Assigned', artist_default_format)
+
+                # Add conditional formattion for artists cells
+                cell_ref = xl_rowcol_to_cell(artist_row, col, row_abs=False, col_abs=False)
+                worksheet.conditional_format(artist_row, col, artist_row, col, 
+                    {
+                    'type': 'formula',
+                    'criteria': f'=AND({cell_ref}<>"", {cell_ref}<>"Not Assigned")',
+                    'format': artist_assigned_format,
+                    }
+                )
 
             # Add conditional formatting for status cells
             for status, format_obj in status_formats.items():
@@ -909,7 +935,7 @@ class ShotSheetMaker:
                         'value': f'"{status}"',
                         'format': format_obj
                     })
-            
+
             # Force write the metadata values after all other operations
             source_info = str(self.shot_dict[shot_name][1])
             source_name = source_info.split(': ', 1)[1] if ': ' in source_info else source_info
@@ -923,10 +949,10 @@ class ShotSheetMaker:
             seq_tc = f"{seq_tc_in}\n{seq_tc_out}"  # Format with line break
             
             # Get frame count
-            length_info = str(self.shot_dict[shot_name][11])  # Format: "Shot Length: duration - X Frames"
-            frame_count = length_info.split(' - ')[1].split(' ')[0]  # Extract just the number
+            length_info = str(self.shot_dict[shot_name][11])  
+            frame_count = length_info.split(' - ')[1].split(' ')[0]  
             
-            worksheet.write(current_row + 1, 3, source_name, source_name_format)  # Using clip format
+            worksheet.write(current_row + 1, 3, source_name, metadata_value_format)  
             worksheet.write(current_row + 1, 4, source_tc, metadata_value_format)
             worksheet.write(current_row + 1, 5, seq_tc, metadata_value_format)
             worksheet.write(current_row + 1, 6, frame_count, metadata_value_format)
@@ -940,6 +966,51 @@ class ShotSheetMaker:
             
             # Move to next group (5 rows for content + 1 for divider)
             current_row += 6
+
+            #### End of shots loop ####
+
+            
+
+            # Pastel palette (edit to your taste)
+            pastel_colors = ['#B897CB','#A3C7E3','#F6B7C1','#F6D28B','#C5E1A5','#AED9E0','#FFD3B6','#D1C4E9']
+            artist_palette_formats = [workbook.add_format({
+                'font_name': 'Helvetica',
+                'bg_color': c,
+                'font_color': '#000000',  # readable on pastels
+                'bold': True,
+                'valign': 'vcenter',
+                'text_wrap': True
+            }) for c in pastel_colors]
+            PALETTE_N = len(artist_palette_formats)
+
+            # Figure out the rows that contain Artist cells
+            # shots start at FIRST_SHOT_ROW, artist row is +4 inside each 6-row block
+            # FIRST_SHOT_ROW = <whatever you set above>       # e.g., META_ROW + 1 or DIVIDER_ROW + 1
+            first_artist_row = FIRST_SHOT_ROW + 4
+            last_artist_row  = (current_row - 6) + 4   # last block starts at current_row-6
+
+            if last_artist_row >= first_artist_row:
+                # top-left cell of artist region (used as relative reference)
+                tl = xl_rowcol_to_cell(first_artist_row, 2, row_abs=False, col_abs=False)  # e.g., "C7"
+
+                for k, fmt in enumerate(artist_palette_formats):
+                    # Rules:
+                    # - not blank
+                    # - not "Not Assigned"
+                    # - present in Artists named range
+                    # - bucket by roster position: MOD(MATCH(value, Artists, 0)-1, N) = k
+                    formula = (
+                        f'=AND({tl}<>"",'
+                        f'{tl}<>"Not Assigned",'
+                        f'NOT(ISERROR(MATCH({tl},Artists,0))),'
+                        f'MOD(MATCH({tl},Artists,0)-1,{PALETTE_N})={k})'
+                    )
+                    worksheet.conditional_format(
+                        first_artist_row, 2,   # C
+                        last_artist_row,  6,   # G
+                        {'type': 'formula', 'criteria': formula, 'format': fmt}
+                    )
+
 
 #-------------------------------------
 # [Scopes]
