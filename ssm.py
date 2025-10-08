@@ -210,10 +210,16 @@ class ShotSheetMaker:
                 self.export_path_entry.text = export_path
 
         def run_export():
-            # Hide → run → close
+            # Hide → run → close, unless error then user can fix or exit
             self.window.hide()
-            self.create_shot_sheets()
-            self.window.close()
+            ok = self.create_shot_sheets()
+            if ok:
+                self.window.close()
+            else:
+                try: 
+                    self.window.show()
+                except Exception:
+                    pass
 
         self.window = PyFlameWindow(
             title=f'{SCRIPT_NAME} <small>{SCRIPT_VERSION}</small>',
@@ -250,8 +256,10 @@ class ShotSheetMaker:
 
         Create shot sheets from selected sequences. Export to xlsx format. 
         """
-        import xlsxwriter
+        # Imported here so script does not fail if xlsxwriter is not installed and is needs installed by script
+        import xlsxwriter   
 
+        #### Create error dialogue methods
         def show_error(message):
             PyFlameMessageWindow(
                 message=message,
@@ -264,15 +272,7 @@ class ShotSheetMaker:
                 pyflame.print(msg)
             except Exception:
                 print(msg)
-
-        # Decide auto export location based on project name
-        export_root = self._suggest_export_root()
-
-        # Reflect chosen path in the UI entry (so the user sees where it’s going)
-        try:
-            self.export_path_entry.text = str(export_root)
-        except Exception:
-            pass
+        ####
 
         # Sort selected sequences by name
         try:
@@ -285,24 +285,45 @@ class ShotSheetMaker:
             safe_log(f'Error sorting sequences: {e}')
             return
 
-        # Use whatever the user left in the dialog
+        # Assign contents of dialogue box path to chose_root
         chosen_root = Path(self.export_path_entry.text)
 
-        # Try to create it; if we can’t, fallback to Desktop
+        # Try to create dir; if we can’t raise error
         try:
             chosen_root.mkdir(parents=True, exist_ok=True)
-            export_root = chosen_root
-        except Exception:
-            now = datetime.now()
-            date_str = now.strftime("%Y%m%d")
-            time_str = now.strftime("%H%M")
-            desktop = Path.home() / "Desktop"
-            if not desktop.exists():
-                desktop = Path.home()
-
-            export_root = desktop / f"{self.flame_project_name}_shot_sheets" / date_str / time_str
-            export_root.mkdir(parents=True, exist_ok=True)
-
+        except Exception as e:
+            PyFlameMessageWindow(
+                message=(f"Unable to create xport folder :\n{chosen_root}\n\n{e}\n"
+                         "Please choose a different location."),
+                title=f"{SCRIPT_NAME}: Export Error",
+                message_type=MessageType.ERROR,
+                parent=self.window, 
+            )
+            return 
+        
+        # Try to create filer; if we can’t raise error
+        testfile = chosen_root / ".write_test"
+        try:
+            with open(testfile, "w") as _f:
+                _f.write("")
+        except Exception as e:
+            PyFlameMessageWindow(
+                message=(f"No write permission in:\n{chosen_root}\n\n{e}\n"
+                         "Please choose a different location."),
+                title=f"{SCRIPT_NAME}: Export Error",
+                message_type=MessageType.ERROR,
+                parent=self.window,
+            )
+            return
+        finally:
+            try:
+                testfile.unlink()
+            except Exception:
+                pass
+        
+        # If both tests pass, safe to use chosen_root
+        export_root = chosen_root
+        
         # Create one workbook per sequence
         for sequence in sorted_sequences:
             seq_name = str(sequence.name)[1:-1]
@@ -318,7 +339,6 @@ class ShotSheetMaker:
                 show_error(f'Error creating workbook for {seq_name}: {e}')
                 safe_log(f'Error creating workbook for {seq_name}: {e}')
                 continue
-
 
         # Delete temp directory
         try:
@@ -336,7 +356,6 @@ class ShotSheetMaker:
         try:
             def _open_export_location():
                 try:
-                    # use the actual folder you wrote to
                     pyflame.open_in_finder(path=str(export_root))
                 finally:
                     export_done_window.close()
@@ -346,11 +365,11 @@ class ShotSheetMaker:
 
             export_done_window = PyFlameWindow(
                 title=f'{SCRIPT_NAME}: Export Complete',
-                return_pressed=_close_export_dialog,   # Enter = OK
-                escape_pressed=_close_export_dialog,   # Esc = OK
+                return_pressed=_close_export_dialog,   
+                escape_pressed=_close_export_dialog,   
                 grid_layout_columns=5,
                 grid_layout_rows=3,
-                parent=None,  # main window is already closed/hidden at this point
+                parent=None,  
             )
 
             msg = PyFlameLabel(
