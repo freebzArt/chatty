@@ -60,9 +60,6 @@ class ShotSheetMaker:
         if not pyflame.verify_script_install():
             return
 
-        # Create/Load config file settings.
-        self.settings = self.load_config()
-
         self.selection = selection
 
         # Make sure sequences only have one version/track
@@ -135,19 +132,6 @@ class ShotSheetMaker:
         if xlsxwriter_installed:
             return self.main_window()
         return self.install_xlsxwriter()
-
-    def load_config(self) -> PyFlameConfig:
-        settings = PyFlameConfig(
-            config_values={
-                'export_path': '/opt/Autodesk',
-                'thumbnail_size': 'Medium',
-                'one_workbook': True,
-                'reveal_in_finder': False,
-                'save_images': False,
-                }
-            )
-
-        return settings
 
     def xlsxwriter_check(self) -> bool:
         """
@@ -232,55 +216,28 @@ class ShotSheetMaker:
             if export_path:
                 self.export_path_entry.text = export_path
 
-        def save_config():
-            # Persist only the export path
-            self.settings.export_path = self.export_path_entry.text
-
-            # Path checks
-            if not os.path.isdir(self.settings.export_path):
-                PyFlameMessageWindow(
-                    message='Export path not found - Select new path.',
-                    message_type=MessageType.ERROR,
-                    parent=self.window,
-                )
-                return
-            if not os.access(self.settings.export_path, os.W_OK):
-                PyFlameMessageWindow(
-                    message='Unable to export to selected path - Select new path.',
-                    message_type=MessageType.ERROR,
-                    parent=self.window,
-                )
-                return
-
-            # If you still want to persist a config file, do it here (path only)
-            self.settings.save_config(config_values={
-                'export_path': self.export_path_entry.text,
-            })
-
+        def run_export():
             # Hide → run → close
             self.window.hide()
             self.create_shot_sheets()
             self.window.close()
 
-        def close_window():
-            self.window.close()
-
         # ---- UI (minimal) ----
         self.window = PyFlameWindow(
             title=f'{SCRIPT_NAME} <small>{SCRIPT_VERSION}</small>',
-            return_pressed=save_config,
-            escape_pressed=close_window,
+            return_pressed=run_export,
+            # escape_pressed=self.window.close,
             grid_layout_columns=5,
             grid_layout_rows=3,  # smaller grid now
             parent=None,
         )
 
         self.export_path_label = PyFlameLabel(text='Export Path')
-        default_root = self._suggest_export_root(self.flame_project_name)
+        default_root = self._suggest_export_root()
         self.export_path_entry = PyFlameEntry(text=str(default_root))
 
         self.export_path_browse_button = PyFlameButton(text='Browse', connect=export_path_browse)
-        self.create_button = PyFlameButton(text='Create', connect=save_config, color=Color.BLUE)
+        self.create_button = PyFlameButton(text='Create', connect=run_export, color=Color.BLUE)
         self.cancel_button = PyFlameButton(text='Cancel', connect=self.window.close)
 
         # Layout
@@ -330,8 +287,6 @@ class ShotSheetMaker:
             ----
                 xlsx_path (str): Path to the xlsx file to edit.
             """
-
-
 
             def unzip_xlsx(xlsx_path, extract_dir):
                 with zipfile.ZipFile(xlsx_path, 'r') as zip_ref:
@@ -393,26 +348,8 @@ class ShotSheetMaker:
 
             patch_xlsx_images(xlsx_path, xlsx_path)
 
-        def save_images():
-            """
-            Save Images
-            ===========
-
-            Save images to export path if selected.
-            """
-
-            # Copy images to export path
-            if self.settings.save_images:
-                image_path = os.path.join(self.export_path_entry.text, f'{seq_name}_images')
-                if not os.path.exists(image_path):
-                    os.makedirs(image_path)
-                for image in os.listdir(self.temp_image_path):
-                    if image.endswith('.jpg'):
-                        shutil.copy(os.path.join(self.temp_image_path, image), os.path.join(image_path, image))
-
         # Decide auto export location based on project name
-        srvr_proj_name = str(self.flame_project_name)
-        export_root, used_server = self._resolve_export_root(srvr_proj_name)
+        export_root = self._suggest_export_root()
 
         # Reflect chosen path in the UI entry (so the user sees where it’s going)
         try:
@@ -438,19 +375,16 @@ class ShotSheetMaker:
         try:
             chosen_root.mkdir(parents=True, exist_ok=True)
             export_root = chosen_root
-            used_fallback = False
         except Exception:
             now = datetime.now()
             date_str = now.strftime("%Y%m%d")
             time_str = now.strftime("%H%M")
-
             desktop = Path.home() / "Desktop"
             if not desktop.exists():
                 desktop = Path.home()
 
             export_root = desktop / f"{self.flame_project_name}_shot_sheets" / date_str / time_str
             export_root.mkdir(parents=True, exist_ok=True)
-            used_fallback = True
 
         # Create one workbook per sequence
         for sequence in sorted_sequences:
@@ -484,26 +418,48 @@ class ShotSheetMaker:
 
         # Show message window
         try:
-            PyFlameMessageWindow(
-                message=f'Shot Sheet(s) Exported:\n\n{self.export_path_entry.text}',
+            def _open_export_location():
+                try:
+                    # use the actual folder you wrote to
+                    pyflame.open_in_finder(path=str(export_root))
+                finally:
+                    export_done_window.close()
+
+            def _close_export_dialog():
+                export_done_window.close()
+
+            export_done_window = PyFlameWindow(
                 title=f'{SCRIPT_NAME}: Export Complete',
-                parent=self.window,
+                return_pressed=_close_export_dialog,   # Enter = OK
+                escape_pressed=_close_export_dialog,   # Esc = OK
+                grid_layout_columns=5,
+                grid_layout_rows=3,
+                parent=None,  # main window is already closed/hidden at this point
             )
+
+            msg = PyFlameLabel(
+                text=f'Shot sheet(s) exported to:\n{export_root}'
+            )
+
+            open_btn = PyFlameButton(
+                text='Open Folder',
+                connect=_open_export_location,
+                color=Color.BLUE
+            )
+
+            ok_btn = PyFlameButton(
+                text='OK',
+                connect=_close_export_dialog
+            )
+
+            export_done_window.grid_layout.addWidget(msg,    0, 0, 1, 5)
+            export_done_window.grid_layout.addWidget(ok_btn, 2, 3)
+            export_done_window.grid_layout.addWidget(open_btn, 2, 4)
+
+            ok_btn.set_focus()
+
         except Exception as e:
             safe_log(f'Error showing export complete message: {e}')
-
-        if used_fallback:
-            try:
-                PyFlameMessageWindow(
-                    message=(
-                        "The job folder on the server was not accessible.\n\n"
-                        f"Saved to Desktop instead:\n{export_root}"
-                    ),
-                    title=f'{SCRIPT_NAME}: Server Unavailable',
-                    parent=self.window,
-                )
-            except Exception:
-                safe_log(f'Fallback to Desktop: {export_root}')
 
         safe_log('Done.')
 
@@ -629,20 +585,22 @@ class ShotSheetMaker:
 
                 self.shot_dict.update({shot_name : self.clip_info_list})
 
-    def _suggest_export_root(self, project_name: str) -> Path:
+    def _suggest_export_root(self) -> Path:
         now = datetime.datetime.now()
         date_str = now.strftime("%Y%m%d")
         time_str = now.strftime("%H%M") 
 
-        system = platform.system()
-        if system == 'Darwin':
-            job_root = Path('/Volumes/vfx_1')
-        else:
-            job_root = Path('/home/jointadmin/mnt/vfx_1')  
+        base = Path("/Volumes/vfx_1") if platform.system() == "Darwin" else Path("/home/jointadmin/mnt/vfx_1")
+        job_root = base / self.flame_project_name
 
-        return job_root / "pipeline" / "shot_tracker" / date_str / time_str 
-
-
+        if job_root.is_dir():
+            return job_root / "pipeline" / "shot_tracker" / date_str / time_str
+        
+        desktop = Path.home() / "Desktop"
+        if not desktop.exists():
+            desktop = Path.home()
+        return desktop / f"{self.flame_project_name}_shot_sheets" / date_str / time_str 
+    
     def _sequence_meta(self, sequence) -> dict:
         """Collect and format useful sequence metadata from Flame, safely."""
         def _flt(x: object) -> str:
@@ -802,6 +760,10 @@ class ShotSheetMaker:
         worksheet.set_column('B:B', 20)  # Shot info column - narrower
         worksheet.set_column('C:G', 25)  # Department columns
 
+        #-------------------------------------
+        # FORMATS   
+        #-------------------------------------
+
         meta_format = workbook.add_format({
             'font_name': 'Helvetica',
             'bg_color': '#2C2C2C',  
@@ -812,7 +774,6 @@ class ShotSheetMaker:
             'font_size': 10,
         })
 
-        # Separate format for title row (dark gray)
         title_format = workbook.add_format({
             'font_name': 'Helvetica',
             'bg_color': '#2C2C2C',  
@@ -821,10 +782,9 @@ class ShotSheetMaker:
             'align': 'center',
             'valign': 'vcenter',
             'text_wrap': True,
-            'font_size': 14  # Slightly larger for title
+            'font_size': 14  
         })
 
-        # Format for column headers (darker purple)
         header_format = workbook.add_format({
             'font_name': 'Helvetica',
             'bg_color': '#2C2C2C',  # Darker gray
@@ -835,46 +795,88 @@ class ShotSheetMaker:
             'text_wrap': True
         })
 
-        shot_name_format = workbook.add_format({
+        task_format = workbook.add_format({
             'font_name': 'Helvetica',
-            'bg_color': "#505050",  # Dark gray
-            'font_color': 'white',
-            'bold': True,
-            'font_size': 14,
-            'align': 'center',
             'valign': 'vcenter',
             'text_wrap': True
         })
 
-        task_header_format = workbook.add_format({
-            'font_name': 'Helvetica',
-            'bg_color': '#2C2C2C',  # Darker gray
-            'font_color': 'white',
-            'bold': True,
-            'align': 'left',
-            'valign': 'vcenter',
-            'text_wrap': True
+        black_fill = workbook.add_format({
+            'bg_color': '#000000'
         })
-
-        dept_format = workbook.add_format({
+                
+        thumbnail_format = workbook.add_format({
             'font_name': 'Helvetica',
-            'bg_color': '#2C2C2C',  # Darker purple
+            'bg_color': '#2C2C2C',  # Same dark gray as shot name
             'font_color': 'white',
-            'bold': True,
-            'align': 'center',
             'valign': 'vcenter'
         })
 
-        label_format = workbook.add_format({
+        shot_name_format = workbook.add_format({
             'font_name': 'Helvetica',
-            'bg_color': "#3A3A3A",  # Light purple
+            'bold': True,
+            'font_size': 18,  # Increased to 18
+            'align': 'center',
+            'valign': 'vcenter',
+            'text_wrap': True,
+            'bg_color': '#2C2C2C',  # Darker gray to match header style
+            'font_color': 'white',   # White text
+            'border': 1,             # Add subtle border
+            'border_color': '#404040' # Slightly lighter border color
+        })
+
+        dept_task_format = workbook.add_format({
+            'font_name': 'Helvetica',
+            'bg_color': '#2C2C2C',  # Darker purple
+            'font_color': 'white',   # White text
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+        })  
+
+                # Define formats for metadata
+        metadata_header_format = workbook.add_format({
+            'font_name': 'Helvetica',
+            'bg_color': '#2C2C2C',  # Dark gray background
+            'font_color': 'white',   # White text
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'text_wrap': True,
+            'font_size': 10  # Smaller font for headers
+        })
+
+        # Format for source name (with text clipping)
+        source_name_format = workbook.add_format({
+            'font_name': 'Helvetica',
+            'bg_color': '#404040',  # Lighter gray for values
             'font_color': 'white',
-            'align': 'left',
+            'align': 'center',
+            'valign': 'vcenter',
+            'text_wrap': False,  # Disable text wrapping
+            'font_size': 9  # Even smaller font for values
+        })
+
+        # Format for other metadata values (with text wrapping)
+        metadata_value_format = workbook.add_format({
+            'font_name': 'Helvetica',
+            'bg_color': '#404040',  # Lighter gray for values
+            'font_color': 'white',
+            'align': 'center',
+            'valign': 'vcenter',
+            'text_wrap': True,
+            'font_size': 9  # Even smaller font for values
+        })
+
+                # Very light gray format for artist cells
+        artist_format = workbook.add_format({
+            'font_name': 'Helvetica',
+            'bg_color': "#AFAFAF",  # Pure white
             'valign': 'vcenter',
             'text_wrap': True
         })
 
-        empty_format = workbook.add_format({
+        status_cell_format = workbook.add_format({
             'font_name': 'Helvetica',
             'bg_color': '#404040',  # Lighter gray
             'font_color': 'white',
@@ -882,19 +884,12 @@ class ShotSheetMaker:
             'text_wrap': True
         })
 
-        shot_name_format = workbook.add_format({
-            'font_name': 'Helvetica',
-            'bold': True,
-            'valign': 'vcenter',
-            'text_wrap': True
+        # Add a black divider row after each shot
+        divider_format = workbook.add_format({
+            'bg_color': '#000000',  # Pure black
+            'font_color': '#000000'  # Hide any potential content
         })
-
-        task_format = workbook.add_format({
-            'font_name': 'Helvetica',
-            'valign': 'vcenter',
-            'text_wrap': True
-        })
-
+        
         # Row indices for layout
         TITLE_ROW = 0
         META_ROW = 1
@@ -920,7 +915,7 @@ class ShotSheetMaker:
         # Divider row after sequence metadata
         SPACER_ROW = META_ROW + 1
         worksheet.set_row(SPACER_ROW, 15)
-        black_fill = workbook.add_format({'bg_color': '#000000'})
+
         
         for col in range(7):
             worksheet.write_blank(SPACER_ROW, col, None, black_fill)
@@ -938,14 +933,6 @@ class ShotSheetMaker:
             for i in range(5):
                 worksheet.set_row(current_row + i, self.row_height / 5)
 
-            # Thumbnail cell format matching shot name background
-            thumbnail_format = workbook.add_format({
-                'font_name': 'Helvetica',
-                'bg_color': '#2C2C2C',  # Same dark gray as shot name
-                'font_color': 'white',
-                'valign': 'vcenter'
-            })
-            
             # Merge cells vertically for the thumbnail column
             worksheet.merge_range(current_row, 0, current_row + 4, 0, '', thumbnail_format)
             
@@ -963,67 +950,9 @@ class ShotSheetMaker:
 
             # Set the top row height to double
             worksheet.set_row(current_row, self.row_height / 2)  # Double height for shot name row
-            
-            # Enhanced shot name format with larger font and dark gray background
-            shot_name_format = workbook.add_format({
-                'font_name': 'Helvetica',
-                'bold': True,
-                'font_size': 18,  # Increased to 18
-                'align': 'center',
-                'valign': 'vcenter',
-                'text_wrap': True,
-                'bg_color': '#2C2C2C',  # Darker gray to match header style
-                'font_color': 'white',   # White text
-                'border': 1,             # Add subtle border
-                'border_color': '#404040' # Slightly lighter border color
-            })
-            
-            # Define the task format that will be used for both metadata and department labels
-            dept_task_format = workbook.add_format({
-                'font_name': 'Helvetica',
-                'bg_color': '#2C2C2C',  # Darker purple
-                'font_color': 'white',   # White text
-                'bold': True,
-                'align': 'center',
-                'valign': 'vcenter',
-            })
 
             # Write shot name merged across both name and buffer cell
             worksheet.merge_range(current_row, 1, current_row + 1, 2, shot_name, shot_name_format)  # Shot name merged across two columns
-
-            # Define formats for metadata
-            metadata_header_format = workbook.add_format({
-                'font_name': 'Helvetica',
-                'bg_color': '#2C2C2C',  # Dark gray background
-                'font_color': 'white',   # White text
-                'bold': True,
-                'align': 'center',
-                'valign': 'vcenter',
-                'text_wrap': True,
-                'font_size': 10  # Smaller font for headers
-            })
-
-            # Format for source name (with text clipping)
-            source_name_format = workbook.add_format({
-                'font_name': 'Helvetica',
-                'bg_color': '#404040',  # Lighter gray for values
-                'font_color': 'white',
-                'align': 'center',
-                'valign': 'vcenter',
-                'text_wrap': False,  # Disable text wrapping
-                'font_size': 9  # Even smaller font for values
-            })
-
-            # Format for other metadata values (with text wrapping)
-            metadata_value_format = workbook.add_format({
-                'font_name': 'Helvetica',
-                'bg_color': '#404040',  # Lighter gray for values
-                'font_color': 'white',
-                'align': 'center',
-                'valign': 'vcenter',
-                'text_wrap': True,
-                'font_size': 9  # Even smaller font for values
-            })
 
             # Write metadata labels in top row with adjusted height
             metadata_labels = ['Source Name', 'Source TC I/O', 'Seq TC I/O', 'Length frames']
@@ -1064,23 +993,9 @@ class ShotSheetMaker:
             for col in range(3, 7):
                 worksheet.write(current_row + 1, col, '', shot_name_format)
 
-            # Add department labels for task row (Bold and centered)
-            dept_format = workbook.add_format({
-                'font_name': 'Helvetica',
-                'bold': True,
-                'align': 'center',
-                'valign': 'vcenter'
-            })
-
             # Write department names in task row using the pre-defined departments list
             for col, dept in enumerate(departments, start=1):  # Start from column C (index 2)
                 worksheet.write(current_row + 2, col, dept, dept_task_format)  # Write in task row with dark purple
-
-            # Keep cells empty for Status and Artist rows, but don't merge
-            empty_format = workbook.add_format({
-                'font_name': 'Helvetica',
-                'valign': 'vcenter'
-            })
             
             # Define status formats with colors
             status_formats = {
@@ -1137,23 +1052,9 @@ class ShotSheetMaker:
                 })
                 
                 # Write default status and empty artist cell with lighter gray background
-                status_cell_format = workbook.add_format({
-                    'font_name': 'Helvetica',
-                    'bg_color': '#404040',  # Lighter gray
-                    'font_color': 'white',
-                    'valign': 'vcenter',
-                    'text_wrap': True
-                })
                 worksheet.write(current_row + 3, col, 'Not Started', status_cell_format)  # Status row with default value
 
-                # Very light gray format for artist cells
-                artist_format = workbook.add_format({
-                    'font_name': 'Helvetica',
-                    'bg_color': '#FFFFFF',  # Pure white
-                    'valign': 'vcenter',
-                    'text_wrap': True
-                })
-                # Write artist cell with white background
+                # Write artist cell 
                 worksheet.write(current_row + 4, col, '', artist_format)
 
             # Add conditional formatting for status cells
@@ -1186,12 +1087,6 @@ class ShotSheetMaker:
             worksheet.write(current_row + 1, 4, source_tc, metadata_value_format)
             worksheet.write(current_row + 1, 5, seq_tc, metadata_value_format)
             worksheet.write(current_row + 1, 6, frame_count, metadata_value_format)
-
-            # Add a black divider row after each shot
-            divider_format = workbook.add_format({
-                'bg_color': '#000000',  # Pure black
-                'font_color': '#000000'  # Hide any potential content
-            })
             
             # Set divider row height to be very small
             worksheet.set_row(current_row + 5, 15)  #second number is pixel height
