@@ -29,9 +29,7 @@ import flame
 from lib.pyflame_lib_shot_sheet_maker import *
 from xlsxwriter.utility import xl_rowcol_to_cell
 
-#---------------------#-------------------------------------
-# [Constants]
-#-----------------------------------------------------
+#-------------------------------------
 # [Constants]
 #-------------------------------------
 
