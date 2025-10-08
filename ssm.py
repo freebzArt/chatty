@@ -1,13 +1,6 @@
 """
-Script Name: Shot Sheet Maker
-Script Version: 3.13.0
-Flame Version: 2025
-Written by: Michael Vaglienty
-
-Custom Action Type: Media Panel
-
 Description:
-    Create shot sheets from selected sequence clips that can be loaded into Excel, Google Sheets, or Numbers.
+    Create shot sheets from selected sequence clips that can be loaded into Google Sheets.
 
     Sequence should have all clips on one version/track.
 
@@ -27,8 +20,6 @@ To install:
 
 import os
 import shutil
-import zipfile
-import re
 import xml.etree.ElementTree as ET
 from collections import OrderedDict
 from datetime import datetime
@@ -38,12 +29,14 @@ import flame
 from lib.pyflame_lib_shot_sheet_maker import *
 from xlsxwriter.utility import xl_rowcol_to_cell
 
-#-------------------------------------
+#---------------------#-------------------------------------
+# [Constants]
+#-----------------------------------------------------
 # [Constants]
 #-------------------------------------
 
-SCRIPT_NAME = 'Shot Sheet Maker'
-SCRIPT_VERSION = 'v3.13.0'
+SCRIPT_NAME = 'Shot Sheet Maker - Joint'
+SCRIPT_VERSION = 'v1.0.0'
 SCRIPT_PATH = os.path.abspath(os.path.dirname(__file__))
 
 #-------------------------------------
@@ -122,7 +115,7 @@ class ShotSheetMaker:
             flame.PyExporter.PresetType.Image_Sequence)
         jpg_preset_path = os.path.join(preset_dir, "Jpeg", "Jpeg (8-bit).xml")
 
-        # Copy jpeg export preset to temp directory
+        # Copy jpeg export preset to temp directory to modify for each export
         self.temp_export_preset = os.path.join(self.temp_path, 'Temp_Export_Preset.xml')
         shutil.copy(jpg_preset_path, self.temp_export_preset)
 
@@ -222,13 +215,11 @@ class ShotSheetMaker:
             self.create_shot_sheets()
             self.window.close()
 
-        # ---- UI (minimal) ----
         self.window = PyFlameWindow(
             title=f'{SCRIPT_NAME} <small>{SCRIPT_VERSION}</small>',
             return_pressed=run_export,
-            # escape_pressed=self.window.close,
             grid_layout_columns=5,
-            grid_layout_rows=3,  # smaller grid now
+            grid_layout_rows=3,  
             parent=None,
         )
 
@@ -257,7 +248,7 @@ class ShotSheetMaker:
         Create Shot Sheets
         ==================
 
-        Create shot sheets from selected sequences. Export to xlsx format. Open in Finder if selected.
+        Create shot sheets from selected sequences. Export to xlsx format. 
         """
         import xlsxwriter
 
@@ -273,80 +264,6 @@ class ShotSheetMaker:
                 pyflame.print(msg)
             except Exception:
                 print(msg)
-
-        def edit_xlsx_file(xlsx_path):
-            """
-            Edit XLSX File
-            ==============
-
-            Edit the xlsx file to add image links. Links the images to cell in the xlsx file.
-
-            This only works in Excel. It does not work in Google Sheets or Numbers.
-
-            Args
-            ----
-                xlsx_path (str): Path to the xlsx file to edit.
-            """
-
-            def unzip_xlsx(xlsx_path, extract_dir):
-                with zipfile.ZipFile(xlsx_path, 'r') as zip_ref:
-                    zip_ref.extractall(extract_dir)
-
-            def zip_dir(source_dir, zip_path):
-                with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                    for root, dirs, files in os.walk(source_dir):
-                        for file in files:
-                            full_path = os.path.join(root, file)
-                            arcname = os.path.relpath(full_path, source_dir)
-                            zipf.write(full_path, arcname)
-
-            def modify_drawing_xml(drawing_xml_path):
-                ns = {
-                    'xdr': 'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing',
-                }
-                ET.register_namespace('', ns['xdr'])
-
-                tree = ET.parse(drawing_xml_path)
-                root = tree.getroot()
-
-                for anchor_tag in ['{http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing}twoCellAnchor',
-                                '{http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing}oneCellAnchor']:
-                    for anchor in root.findall(anchor_tag):
-                        anchor.set('editAs', 'twoCell')  # Options: 'absolute', 'oneCell', 'twoCell'
-
-                tree.write(drawing_xml_path, encoding='utf-8', xml_declaration=True)
-
-            def patch_xlsx_images(xlsx_path, output_path):
-                temp_dir = os.path.join(os.path.dirname(xlsx_path), 'temp_xlsx')
-
-                if os.path.exists(temp_dir):
-                    shutil.rmtree(temp_dir)
-                os.makedirs(temp_dir)
-
-                # Step 1: Unzip the .xlsx file
-                unzip_xlsx(xlsx_path, temp_dir)
-
-                # Step 2: Modify drawing XML files
-                drawings_dir = os.path.join(temp_dir, 'xl', 'drawings')
-                if os.path.isdir(drawings_dir):
-                    for file in os.listdir(drawings_dir):
-                        if file.startswith('drawing') and file.endswith('.xml'):
-                            full_path = os.path.join(drawings_dir, file)
-                            modify_drawing_xml(full_path)
-
-                # Step 3: Zip folder back to .xlsx
-                temp_zip = output_path + '.zip'
-                zip_dir(temp_dir, temp_zip)
-
-                # Step 4: Rename .zip back to .xlsx
-                if os.path.exists(output_path):
-                    os.remove(output_path)
-                os.rename(temp_zip, output_path)
-
-                # Cleanup
-                shutil.rmtree(temp_dir)
-
-            patch_xlsx_images(xlsx_path, xlsx_path)
 
         # Decide auto export location based on project name
         export_root = self._suggest_export_root()
@@ -397,7 +314,6 @@ class ShotSheetMaker:
                 self.get_shots(sequence)
                 self.create_sequence_worksheet(workbook, seq_name)
                 workbook.close()
-                edit_xlsx_file(xlsx_path)
             except Exception as e:
                 show_error(f'Error creating workbook for {seq_name}: {e}')
                 safe_log(f'Error creating workbook for {seq_name}: {e}')
@@ -660,96 +576,6 @@ class ShotSheetMaker:
         }
 
     def create_sequence_worksheet(self, workbook, seq_name):
-
-        def add_clip_info_column(clip_info) -> None:
-            """
-            This will add clip info as additional rows below each shot's 4-row block.
-            """
-
-            if not clip_info:
-                return
-
-            # Set wider column for clip info
-            worksheet.set_column('B:B', 50)
-
-            # Start from first shot row and increment by 4 for each shot plus any additional info rows
-            current_row = 1
-            row_offset = 0
-
-            for shot in self.shot_dict:
-                clip_info_text = []
-
-                # Always collect clip info
-                clip_info_text.append(str(self.shot_dict[shot][1]))  # Source Name
-                clip_info_text.append(str(self.shot_dict[shot][3]))  # Source TC
-                clip_info_text.append(str(self.shot_dict[shot][6]))  # Record TC
-                clip_info_text.append(str(self.shot_dict[shot][11])) # Shot Length
-
-                if clip_info_text:
-                    # Calculate actual row with offset
-                    actual_row = current_row + row_offset
-                    
-                    # Write clip info in additional rows below the 4-row block
-                    clip_info = '\n'.join(clip_info_text)
-                    worksheet.merge_range(actual_row + 4, 1, actual_row + 5, 7, clip_info, task_format)
-                    
-                    # Set appropriate height for info rows
-                    worksheet.set_row(actual_row + 4, 30)
-                    worksheet.set_row(actual_row + 5, 30)
-                    
-                    # Increment offset for additional rows
-                    row_offset += 2
-
-                current_row += 4  # Move to next shot's block
-
-        def add_token_clip_info() -> None:
-            """
-            Add the clip info to appropriate fields in the shot info column based on column name tokens.
-            """
-
-            # List of clip info tokens to check against column names
-            info_tokens = [
-                'Shot Name',
-                'Source Name',
-                'Source Path',
-                'Source TC',
-                'Source TC In',
-                'Source TC Out',
-                'Record TC',
-                'Record TC In',
-                'Record TC Out',
-                'Shot Frame In',
-                'Shot Frame Out',
-                'Shot Length',
-                'Source Length',
-                'Comment'
-            ]
-
-            # Keep track of extra rows added for clip info
-            row_offset = 0
-            base_row = 1
-
-            for shot_name in self.shot_dict:
-                # Calculate actual row with offset
-                current_row = base_row + row_offset
-                
-                # Add relevant clip info under each shot's task/status/artist section
-                additional_info = []
-                
-                for name in info_tokens:
-                    if name in column_names and name != 'Shot Name':  # Skip shot name as it's already shown
-                        info = self.shot_dict[shot_name][info_tokens.index(name)].split(': ', 1)[1]
-                        additional_info.append(f"{name}: {info}")
-
-                if additional_info:
-                    # Write the additional info in merged cells below the artist field
-                    info_text = '\n'.join(additional_info)
-                    worksheet.merge_range(current_row + 4, 1, current_row + 5, 7, info_text, task_format)
-                    worksheet.set_row(current_row + 4, 30)
-                    worksheet.set_row(current_row + 5, 30)
-                    row_offset += 2
-
-                base_row += 4  # Move to next shot's base position
 
         # Define department list for reuse
         departments = ['Tracking', 'Roto', 'Paint', 'DMP', 'Comp', 'CG']
