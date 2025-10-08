@@ -650,7 +650,7 @@ class ShotSheetMaker:
             'font_size': 14  
         })
 
-        meta_format = workbook.add_format({
+        meta_title_format = workbook.add_format({
             'font_name': 'Helvetica',
             'bg_color': '#2C2C2C',  
             'font_color': 'white',
@@ -658,16 +658,6 @@ class ShotSheetMaker:
             'valign': 'vcenter',
             'text_wrap': True,
             'font_size': 10,
-        })
-
-        header_format = workbook.add_format({
-            'font_name': 'Helvetica',
-            'bg_color': '#2C2C2C',  
-            'font_color': 'white',
-            'bold': True,
-            'align': 'center',
-            'valign': 'vcenter',
-            'text_wrap': True
         })
                 
         thumbnail_format = workbook.add_format({
@@ -728,15 +718,6 @@ class ShotSheetMaker:
             'text_wrap': True,
         })        
 
-        artist_assigned_format = workbook.add_format({
-            'font_name': 'Helvetica',
-            'bg_color': "#B897CB",  
-            'font_color': 'white',
-            'bold': True,
-            'valign': 'vcenter',
-            'text_wrap': True,
-        })
-
         status_cell_format = workbook.add_format({
             'font_name': 'Helvetica',
             'bg_color': '#404040',  
@@ -769,7 +750,7 @@ class ShotSheetMaker:
             f"Duration: {meta['duration']}"
         )
         worksheet.set_row(META_ROW, 30)
-        worksheet.merge_range(META_ROW, 0, META_ROW, 6, meta_text, meta_format)
+        worksheet.merge_range(META_ROW, 0, META_ROW, 6, meta_text, meta_title_format)
 
         # Divider row after sequence metadata
         SPACER_ROW = META_ROW + 1
@@ -916,16 +897,6 @@ class ShotSheetMaker:
                 # set default value for artist
                 worksheet.write(artist_row, col, 'Not Assigned', artist_default_format)
 
-                # Add conditional formattion for artists cells
-                cell_ref = xl_rowcol_to_cell(artist_row, col, row_abs=False, col_abs=False)
-                worksheet.conditional_format(artist_row, col, artist_row, col, 
-                    {
-                    'type': 'formula',
-                    'criteria': f'=AND({cell_ref}<>"", {cell_ref}<>"Not Assigned")',
-                    'format': artist_assigned_format,
-                    }
-                )
-
             # Add conditional formatting for status cells
             for status, format_obj in status_formats.items():
                 if status != 'Not Started':  # Skip default format
@@ -969,36 +940,56 @@ class ShotSheetMaker:
 
             #### End of shots loop ####
 
-            
+            # Default ‘Not Assigned’ write and dropdown — nothing else
+            artist_row = current_row + 4
+            for col in range(2, 7):  # C..G
+                worksheet.data_validation(artist_row, col, artist_row, col, {
+                    'validate': 'list',
+                    'source': '=Artists',
+                })
+                worksheet.write(artist_row, col, 'Not Assigned', artist_default_format)
 
-            # Pastel palette (edit to your taste)
-            pastel_colors = ['#B897CB','#A3C7E3','#F6B7C1','#F6D28B','#C5E1A5','#AED9E0','#FFD3B6','#D1C4E9']
-            artist_palette_formats = [workbook.add_format({
-                'font_name': 'Helvetica',
-                'bg_color': c,
-                'font_color': '#000000',  # readable on pastels
-                'bold': True,
-                'valign': 'vcenter',
-                'text_wrap': True
-            }) for c in pastel_colors]
+            # Pastel palette for assigned artists (one rule per bucket)
+            pastel_colors = [
+                '#B897CB',  # lavender
+                '#A3C7E3',  # light blue
+                '#F6B7C1',  # light pink
+                '#F6D28B',  # sand
+                '#C5E1A5',  # sage
+                '#AED9E0',  # pale teal
+                '#FFD3B6',  # peach
+                '#D1C4E9',  # periwinkle
+            ]
+            artist_palette_formats = [
+                workbook.add_format({
+                    'font_name': 'Helvetica',
+                    'bg_color': c,
+                    'font_color': '#000000',
+                    'bold': True,
+                    'valign': 'vcenter',
+                    'text_wrap': True,
+                })
+                for c in pastel_colors
+            ]
             PALETTE_N = len(artist_palette_formats)
 
-            # Figure out the rows that contain Artist cells
-            # shots start at FIRST_SHOT_ROW, artist row is +4 inside each 6-row block
-            # FIRST_SHOT_ROW = <whatever you set above>       # e.g., META_ROW + 1 or DIVIDER_ROW + 1
+            # Compute Artist rows span:
+            # If you set FIRST_SHOT_ROW earlier (e.g., just after title/meta), use it here.
+            # Otherwise, set FIRST_SHOT_ROW to whatever initial value you assigned to current_row
+            # right before entering the per-shot loop.
             first_artist_row = FIRST_SHOT_ROW + 4
-            last_artist_row  = (current_row - 6) + 4   # last block starts at current_row-6
+            last_artist_row  = (current_row - 6) + 4  # last block starts at current_row-6
 
             if last_artist_row >= first_artist_row:
-                # top-left cell of artist region (used as relative reference)
-                tl = xl_rowcol_to_cell(first_artist_row, 2, row_abs=False, col_abs=False)  # e.g., "C7"
+                # top-left cell of the Artist region (relative reference)
+                tl = xl_rowcol_to_cell(first_artist_row, 2, row_abs=False, col_abs=False)  # C<row>
 
                 for k, fmt in enumerate(artist_palette_formats):
-                    # Rules:
-                    # - not blank
-                    # - not "Not Assigned"
-                    # - present in Artists named range
-                    # - bucket by roster position: MOD(MATCH(value, Artists, 0)-1, N) = k
+                    # Palette by roster index:
+                    #  - not blank
+                    #  - not "Not Assigned"
+                    #  - present in Artists list
+                    #  - bucket by position: MOD(MATCH(value, Artists, 0)-1, N) = k
                     formula = (
                         f'=AND({tl}<>"",'
                         f'{tl}<>"Not Assigned",'
@@ -1010,6 +1001,8 @@ class ShotSheetMaker:
                         last_artist_row,  6,   # G
                         {'type': 'formula', 'criteria': formula, 'format': fmt}
                     )
+
+            
 
 
 #-------------------------------------
