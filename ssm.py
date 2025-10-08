@@ -624,16 +624,14 @@ class ShotSheetMaker:
         }
 
     def create_sequence_worksheet(self, workbook, seq_name):
-        # from xlsxwriter.utility import xl_rowcol_to_cell
 
         # Define department list for reuse
         departments = ['Tracking', 'Roto', 'Paint', 'DMP', 'Comp', 'CG']
 
         # Create worksheet
         worksheet = workbook.add_worksheet(seq_name)
-        worksheet.set_column('A:A', self.column_width * 1.3)  # Thumbnail column - 30% wider
-        # worksheet.set_column('B:B', 20)  # Shot info column - narrower
-        worksheet.set_column('B:G', 25)  # Department columns
+        worksheet.set_column('A:A', self.column_width * 1.3)  # Thumbnail column 
+        worksheet.set_column('B:H', 25)  # Department columns
 
         #-------------------------------------
         # FORMATS   
@@ -747,7 +745,7 @@ class ShotSheetMaker:
 
         #Big Title Row
         worksheet.set_row(TITLE_ROW, 40) 
-        worksheet.merge_range(TITLE_ROW, 0, TITLE_ROW, 6, seq_name, title_format)
+        worksheet.merge_range(TITLE_ROW, 0, TITLE_ROW, 7, seq_name, title_format)
         
         # Metadata row
         meta = self._sequence_meta(self.current_sequence)
@@ -759,13 +757,13 @@ class ShotSheetMaker:
             f"Duration: {meta['duration']}"
         )
         worksheet.set_row(META_ROW, 30)
-        worksheet.merge_range(META_ROW, 0, META_ROW, 6, meta_text, meta_title_format)
+        worksheet.merge_range(META_ROW, 0, META_ROW, 7, meta_text, meta_title_format)
 
         # Divider row after sequence metadata
         SPACER_ROW = META_ROW + 1
         worksheet.set_row(SPACER_ROW, 15)
 
-        for col in range(7):
+        for col in range(8):
             worksheet.write_blank(SPACER_ROW, col, None, divider_format)
 
         current_row = FIRST_SHOT_ROW
@@ -798,7 +796,7 @@ class ShotSheetMaker:
             worksheet.merge_range(current_row, 1, current_row + 1, 2, shot_name, shot_name_format)  # Shot name merged across two columns
 
             # Write metadata labels in top row with adjusted height
-            metadata_labels = ['Source Name', 'Source TC I/O', 'Seq TC I/O', 'Length frames']
+            metadata_labels = ['Source Name', 'Source TC I/O', 'Seq TC I/O', 'Length frames', 'Notes']
             worksheet.set_row(current_row, 30)  
             for i, label in enumerate(metadata_labels):
                 worksheet.write(current_row, i + 3, label, metadata_label_format)
@@ -832,6 +830,19 @@ class ShotSheetMaker:
             worksheet.write(current_row + 1, 4, source_tc, metadata_value_format)
             worksheet.write(current_row + 1, 5, seq_tc, metadata_value_format)
             worksheet.write(current_row + 1, 6, frame_count, metadata_value_format)
+
+            #### Write notes column, finding first if any comments on flame clip 
+            comment_text = ""
+            try:
+                comment_entry = next((s for s in self.shot_dict[shot_name] if s.startswith('Comment: ')), None)
+                if comment_entry:
+                    comment_text = comment_entry.split(': ', 1)[1]
+            except Exception:
+                pass
+            # Merge and fill notes column
+            worksheet.merge_range(current_row + 1, 7, current_row + 4, 7, comment_text, metadata_value_format)
+            
+            # Write shot name
             for col in range(3, 7):
                 worksheet.write(current_row + 1, col, '', shot_name_format)
 
@@ -953,12 +964,10 @@ class ShotSheetMaker:
             worksheet.write(current_row + 1, 5, seq_tc, metadata_value_format)
             worksheet.write(current_row + 1, 6, frame_count, metadata_value_format)
             
-            # Set divider row height to be very small
-            worksheet.set_row(current_row + 5, 15)  #second number is pixel height
-            
-            # Add black divider across all columns
-            for col in range(7):  # Columns A through H
-                worksheet.write(current_row + 5, col, '', divider_format)
+            # Add black divider row to bottom of each shot
+            div = current_row + 5
+            worksheet.set_row(div, 15)
+            worksheet.merge_range(div, 0, 7, '', divider_format)
             
             # Move to next group (5 rows for content + 1 for divider)
             current_row += 6
