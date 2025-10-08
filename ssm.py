@@ -718,6 +718,15 @@ class ShotSheetMaker:
             'text_wrap': True,
         })        
 
+        artist_assigned_format = workbook.add_format({
+            'font_name': 'Helvetica',
+            'bg_color': "#A79BAE",   # your pastel for any assigned artist
+            'font_color': '#000000',
+            'bold': True,
+            'valign': 'vcenter',
+            'text_wrap': True,
+        })
+
         status_cell_format = workbook.add_format({
             'font_name': 'Helvetica',
             'bg_color': '#404040',  
@@ -909,6 +918,20 @@ class ShotSheetMaker:
                 # Write default artist
                 worksheet.write(current_row + 4, col, 'Not Assigned', artist_default_format) 
 
+            # Add conditional formatting for artist cells
+            artist_row = current_row + 4
+            top_left = f'B{artist_row + 1}'  # A1 ref for the top-left of this CF range (Excel rows are 1-based)
+
+            worksheet.conditional_format(
+                artist_row, 1,    
+                artist_row, 6,    
+                    {   
+                    'type': 'formula',
+                    'criteria': f'=AND({top_left}<>"", {top_left}<>"Not Assigned")',
+                    'format': artist_assigned_format,
+                    }
+                )
+            
             # Force write the metadata values after all other operations
             source_info = str(self.shot_dict[shot_name][1])
             source_name = source_info.split(': ', 1)[1] if ': ' in source_info else source_info
@@ -941,51 +964,6 @@ class ShotSheetMaker:
             current_row += 6
 
         #### End of shots loop ####
-
-        # ---- Per-artist consistent pastel colors via CF ----
-        # 'first_block_start' is the row where the first shot began.
-        # If you don't have it yet, capture it just before the for-shot loop:
-        # first_block_start = current_row
-
-        first_artist_row = FIRST_SHOT_ROW + 4
-        last_artist_row  = (current_row - 6) + 4  # last block starts at (current_row - 6)
-
-        if last_artist_row >= first_artist_row:
-            # Pastel palette (edit/extend to your taste)
-            pastel_colors = ['#B897CB', '#A3C7E3', '#F6B7C1', '#F6D28B',
-                            '#C5E1A5', '#AED9E0', '#FFD3B6', '#D1C4E9']
-            artist_palette_formats = [
-                workbook.add_format({
-                    'font_name': 'Helvetica',
-                    'bg_color': hexcolor,
-                    'font_color': '#000000',
-                    'bold': True,
-                    'valign': 'vcenter',
-                    'text_wrap': True
-                })
-                for hexcolor in pastel_colors
-            ]
-            PALETTE_N = len(artist_palette_formats)
-
-            # Top-left cell of artist region (relative reference like "C7")
-            tl = xl_rowcol_to_cell(first_artist_row, 1, row_abs=False, col_abs=False)
-            roster_abs = 'Roster!$A$2:$A$200'  # explicit range for Sheets compatibility
-
-            # One CF rule per color "bucket" based on artist index in the Artists list.
-            for k, fmt in enumerate(artist_palette_formats):
-                # Not blank, not "Not Assigned", present in Artists list,
-                # and bucketed by MATCH position modulo palette size.
-                formula = (
-                    f'=AND({tl}<>"",'
-                    f'{tl}<>"Not Assigned",'
-                    f'NOT(ISERROR(MATCH({tl},{roster_abs},0))),'
-                    f'MOD(MATCH({tl},{roster_abs},0)-1,{PALETTE_N})={k})'
-                )
-                worksheet.conditional_format(
-                    first_artist_row, 1,    # from column C
-                    last_artist_row,  6,    # to column G
-                    {'type': 'formula', 'criteria': formula, 'format': fmt}
-                )
 
 #-------------------------------------
 # [Scopes]
