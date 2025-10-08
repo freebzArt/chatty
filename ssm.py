@@ -624,7 +624,7 @@ class ShotSheetMaker:
         }
 
     def create_sequence_worksheet(self, workbook, seq_name):
-        from xlsxwriter.utility import xl_rowcol_to_cell
+        # from xlsxwriter.utility import xl_rowcol_to_cell
 
         # Define department list for reuse
         departments = ['Tracking', 'Roto', 'Paint', 'DMP', 'Comp', 'CG']
@@ -790,93 +790,93 @@ class ShotSheetMaker:
 
             # Write metadata labels in top row with adjusted height
             metadata_labels = ['Source Name', 'Source TC I/O', 'Seq TC I/O', 'Length frames']
-            worksheet.set_row(current_row, 30)  # Double the height for header row
+            worksheet.set_row(current_row, 30)  
             for i, label in enumerate(metadata_labels):
                 worksheet.write(current_row, i + 3, label, metadata_label_format)
 
             # Set increased height for metadata values row to accommodate two lines of timecode
-            worksheet.set_row(current_row + 1, self.row_height * 0.35)  # Increased height for two lines
+            worksheet.set_row(current_row + 1, self.row_height * 0.35)  
 
             # Get the source name from the shot_dict (index 1 has the source name info)
             source_info = str(self.shot_dict[shot_name][1])
             source_name = source_info.split(': ', 1)[1] if ': ' in source_info else source_info
 
             # Get source timecode in and out points (indices 4 and 5 have the individual TC points)
-            tc_in = str(self.shot_dict[shot_name][4]).split(': ', 1)[1]  # Source TC In
-            tc_out = str(self.shot_dict[shot_name][5]).split(': ', 1)[1]  # Source TC Out
-            source_tc = f"{tc_in}\n{tc_out}"  # Format with line break
+            tc_in = str(self.shot_dict[shot_name][4]).split(': ', 1)[1]  
+            tc_out = str(self.shot_dict[shot_name][5]).split(': ', 1)[1]  
+            source_tc = f"{tc_in}\n{tc_out}" 
             
             # Get sequence (record) timecode in and out points (indices 7 and 8 have the record TC points)
-            seq_tc_in = str(self.shot_dict[shot_name][7]).split(': ', 1)[1]  # Record TC In
-            seq_tc_out = str(self.shot_dict[shot_name][8]).split(': ', 1)[1]  # Record TC Out
-            seq_tc = f"{seq_tc_in}\n{seq_tc_out}"  # Format with line break
+            seq_tc_in = str(self.shot_dict[shot_name][7]).split(': ', 1)[1]  
+            seq_tc_out = str(self.shot_dict[shot_name][8]).split(': ', 1)[1]  
+            seq_tc = f"{seq_tc_in}\n{seq_tc_out}"  
             
             # Get frame count from Shot Length (index 11)
-            length_info = str(self.shot_dict[shot_name][11])  # Format: "Shot Length: duration - X Frames"
-            frame_count = length_info.split(' - ')[1].split(' ')[0]  # Extract just the number
+            length_info = str(self.shot_dict[shot_name][11])  
+            frame_count = length_info.split(' - ')[1].split(' ')[0]  
             
             # Set specific width for source name column
-            worksheet.set_column(3, 3, 20)  # Set column D (index 3) to width 20
+            worksheet.set_column(3, 3, 20)  
 
             # Write the metadata values
-            worksheet.write(current_row + 1, 3, source_name, metadata_value_format)  # Using clip format
+            worksheet.write(current_row + 1, 3, source_name, metadata_value_format) 
             worksheet.write(current_row + 1, 4, source_tc, metadata_value_format)
             worksheet.write(current_row + 1, 5, seq_tc, metadata_value_format)
             worksheet.write(current_row + 1, 6, frame_count, metadata_value_format)
-            # worksheet.write(current_row + 1, 7, '', metadata_value_format)  # Empty cell with metadata formatting
             for col in range(3, 7):
                 worksheet.write(current_row + 1, col, '', shot_name_format)
 
             # Write department names in task row using the pre-defined departments list
-            for col, dept in enumerate(departments, start=1):  # Start from column C (index 2)
-                worksheet.write(current_row + 2, col, dept, dept_label_format)  # Write in task row with dark purple
+            for col, dept in enumerate(departments, start=1): 
+                worksheet.write(current_row + 2, col, dept, dept_label_format)  
             
             # Define status formats with colors
             status_formats = {
                 'Not Started': workbook.add_format({
                     'font_name': 'Helvetica',
                     'valign': 'vcenter',
-                    'bg_color': '#404040',  # Light gray for not started
+                    'bg_color': '#404040',  
                     'font_color': 'white'
                 }),
                 'In Progress': workbook.add_format({
                     'font_name': 'Helvetica',
                     'valign': 'vcenter',
-                    'bg_color': '#1E90FF',  # Brighter blue
+                    'bg_color': '#1E90FF',  
                     'font_color': 'white'
                 }),
                 'Review': workbook.add_format({
                     'font_name': 'Helvetica',
                     'valign': 'vcenter',
-                    'bg_color': '#FF69B4',  # Brighter pink
+                    'bg_color': '#FF69B4',  
                     'font_color': 'white'
                 }),
                 'Internally Approved': workbook.add_format({
                     'font_name': 'Helvetica',
                     'valign': 'vcenter',
-                    'bg_color': '#3CB371',  # Medium sea green
+                    'bg_color': '#3CB371',  
                     'font_color': 'white'
                 }),
                 'Client Approved': workbook.add_format({
                     'font_name': 'Helvetica',
                     'valign': 'vcenter',
-                    'bg_color': '#228B22',  # Forest green
+                    'bg_color': '#228B22',  
                     'font_color': 'white'
                 }),
                 'On Hold': workbook.add_format({
                     'font_name': 'Helvetica',
                     'valign': 'vcenter',
-                    'bg_color': '#DC143C',  # Crimson red
+                    'bg_color': '#DC143C',  
                     'font_color': 'white'
                 })
             }           
             status_options = list(status_formats.keys())
             
-            # Add status and artist dropdowns 
+            # Add status dropdowns 
             for col in range(1, 7):  
 
                 # Add dropdown validation to status cell
-                worksheet.data_validation(current_row + 3, col, current_row + 3, col, 
+                worksheet.data_validation(
+                    current_row + 3, col, current_row + 3, col, 
                     {
                     'validate': 'list',
                     'source': status_options
@@ -885,17 +885,6 @@ class ShotSheetMaker:
                 
                 # Write default status 
                 worksheet.write(current_row + 3, col, 'Not Started', status_cell_format)  
-
-                # Write artist cell 
-                artist_row = current_row + 4
-                worksheet.data_validation(artist_row, col, artist_row, col, 
-                    {
-                        'validate': 'list',
-                        'source': '=Artists',
-                    }
-                )
-                # set default value for artist
-                worksheet.write(artist_row, col, 'Not Assigned', artist_default_format)
 
             # Add conditional formatting for status cells
             for status, format_obj in status_formats.items():
@@ -906,6 +895,19 @@ class ShotSheetMaker:
                         'value': f'"{status}"',
                         'format': format_obj
                     })
+
+            # Add artist dropdowns 
+            for col in range(1, 7):
+                worksheet.data_validation(
+                    current_row + 4, col, current_row + 4, col,
+                    {
+                    'validate': 'list', 
+                    'source': '=Artists'
+                    }
+                )
+
+                # Write default artist
+                worksheet.write(current_row + 4, col, 'Not Assigned', artist_default_format) 
 
             # Force write the metadata values after all other operations
             source_info = str(self.shot_dict[shot_name][1])
@@ -938,72 +940,52 @@ class ShotSheetMaker:
             # Move to next group (5 rows for content + 1 for divider)
             current_row += 6
 
-            #### End of shots loop ####
+        #### End of shots loop ####
 
-            # Default ‘Not Assigned’ write and dropdown — nothing else
-            artist_row = current_row + 4
-            for col in range(2, 7):  # C..G
-                worksheet.data_validation(artist_row, col, artist_row, col, {
-                    'validate': 'list',
-                    'source': '=Artists',
-                })
-                worksheet.write(artist_row, col, 'Not Assigned', artist_default_format)
+        # ---- Per-artist consistent pastel colors via CF ----
+        # 'first_block_start' is the row where the first shot began.
+        # If you don't have it yet, capture it just before the for-shot loop:
+        # first_block_start = current_row
 
-            # Pastel palette for assigned artists (one rule per bucket)
-            pastel_colors = [
-                '#B897CB',  # lavender
-                '#A3C7E3',  # light blue
-                '#F6B7C1',  # light pink
-                '#F6D28B',  # sand
-                '#C5E1A5',  # sage
-                '#AED9E0',  # pale teal
-                '#FFD3B6',  # peach
-                '#D1C4E9',  # periwinkle
-            ]
+        first_artist_row = FIRST_SHOT_ROW + 4
+        last_artist_row  = (current_row - 6) + 4  # last block starts at (current_row - 6)
+
+        if last_artist_row >= first_artist_row:
+            # Pastel palette (edit/extend to your taste)
+            pastel_colors = ['#B897CB', '#A3C7E3', '#F6B7C1', '#F6D28B',
+                            '#C5E1A5', '#AED9E0', '#FFD3B6', '#D1C4E9']
             artist_palette_formats = [
                 workbook.add_format({
                     'font_name': 'Helvetica',
-                    'bg_color': c,
+                    'bg_color': hexcolor,
                     'font_color': '#000000',
                     'bold': True,
                     'valign': 'vcenter',
-                    'text_wrap': True,
+                    'text_wrap': True
                 })
-                for c in pastel_colors
+                for hexcolor in pastel_colors
             ]
             PALETTE_N = len(artist_palette_formats)
 
-            # Compute Artist rows span:
-            # If you set FIRST_SHOT_ROW earlier (e.g., just after title/meta), use it here.
-            # Otherwise, set FIRST_SHOT_ROW to whatever initial value you assigned to current_row
-            # right before entering the per-shot loop.
-            first_artist_row = FIRST_SHOT_ROW + 4
-            last_artist_row  = (current_row - 6) + 4  # last block starts at current_row-6
+            # Top-left cell of artist region (relative reference like "C7")
+            tl = xl_rowcol_to_cell(first_artist_row, 1, row_abs=False, col_abs=False)
+            roster_abs = 'Roster!$A$2:$A$200'  # explicit range for Sheets compatibility
 
-            if last_artist_row >= first_artist_row:
-                # top-left cell of the Artist region (relative reference)
-                tl = xl_rowcol_to_cell(first_artist_row, 2, row_abs=False, col_abs=False)  # C<row>
-
-                for k, fmt in enumerate(artist_palette_formats):
-                    # Palette by roster index:
-                    #  - not blank
-                    #  - not "Not Assigned"
-                    #  - present in Artists list
-                    #  - bucket by position: MOD(MATCH(value, Artists, 0)-1, N) = k
-                    formula = (
-                        f'=AND({tl}<>"",'
-                        f'{tl}<>"Not Assigned",'
-                        f'NOT(ISERROR(MATCH({tl},Artists,0))),'
-                        f'MOD(MATCH({tl},Artists,0)-1,{PALETTE_N})={k})'
-                    )
-                    worksheet.conditional_format(
-                        first_artist_row, 2,   # C
-                        last_artist_row,  6,   # G
-                        {'type': 'formula', 'criteria': formula, 'format': fmt}
-                    )
-
-            
-
+            # One CF rule per color "bucket" based on artist index in the Artists list.
+            for k, fmt in enumerate(artist_palette_formats):
+                # Not blank, not "Not Assigned", present in Artists list,
+                # and bucketed by MATCH position modulo palette size.
+                formula = (
+                    f'=AND({tl}<>"",'
+                    f'{tl}<>"Not Assigned",'
+                    f'NOT(ISERROR(MATCH({tl},{roster_abs},0))),'
+                    f'MOD(MATCH({tl},{roster_abs},0)-1,{PALETTE_N})={k})'
+                )
+                worksheet.conditional_format(
+                    first_artist_row, 1,    # from column C
+                    last_artist_row,  6,    # to column G
+                    {'type': 'formula', 'criteria': formula, 'format': fmt}
+                )
 
 #-------------------------------------
 # [Scopes]
