@@ -631,7 +631,7 @@ class ShotSheetMaker:
         # Create worksheet
         worksheet = workbook.add_worksheet(seq_name)
         worksheet.set_column('A:A', self.column_width * 1.3)  # Thumbnail column 
-        worksheet.set_column('B:H', 25)  # Department columns
+        worksheet.set_column('B:H', 20)  # Department columns
 
         #-------------------------------------
         # FORMATS   
@@ -645,12 +645,12 @@ class ShotSheetMaker:
             'align': 'center',
             'valign': 'vcenter',
             'text_wrap': True,
-            'font_size': 14  
+            'font_size': 16  
         })
 
         meta_title_format = workbook.add_format({
             'font_name': 'Helvetica',
-            'bg_color': '#2C2C2C',  
+            'bg_color': '#404040',  
             'font_color': 'white',
             'align': 'center',
             'valign': 'vcenter',
@@ -668,14 +668,14 @@ class ShotSheetMaker:
         shot_name_format = workbook.add_format({
             'font_name': 'Helvetica',
             'bold': True,
-            'font_size': 18,  
+            'font_size': 26,  
             'align': 'center',
             'valign': 'vcenter',
             'text_wrap': True,
-            'bg_color': '#2C2C2C',  
-            'font_color': 'white',   
-            'border': 1,             
-            'border_color': '#404040' 
+            'bg_color': '#6F6F6F',
+            'font_color': 'white',
+            'border': 1,  
+            'border_color': "#000000" 
         })
 
         dept_label_format = workbook.add_format({
@@ -704,8 +704,20 @@ class ShotSheetMaker:
             'font_color': 'white',
             'align': 'center',
             'valign': 'vcenter',
-            'text_wrap': False,
+            'text_wrap': True,
             'font_size': 9  
+        })
+
+        notes_value_format = workbook.add_format({
+            'font_name': 'Helvetica',
+            'bg_color': '#6F6F6F',  
+            'font_color': 'white',
+            'align': 'center',
+            'valign': 'vcenter',
+            'text_wrap': True,
+            'font_size': 9  ,
+            'border': 1,
+            'border_color': "#000000" 
         })
 
         artist_default_format = workbook.add_format({
@@ -823,7 +835,7 @@ class ShotSheetMaker:
             frame_count = length_info.split(' - ')[1].split(' ')[0]  
             
             # Set specific width for source name column
-            worksheet.set_column(3, 3, 20)  
+            # worksheet.set_column(3, 3, 20)  
 
             # Write the metadata values
             worksheet.write(current_row + 1, 3, source_name, metadata_value_format) 
@@ -840,7 +852,7 @@ class ShotSheetMaker:
             except Exception:
                 pass
             # Merge and fill notes column
-            worksheet.merge_range(current_row + 1, 7, current_row + 4, 7, comment_text, metadata_value_format)
+            worksheet.merge_range(current_row + 1, 7, current_row + 4, 7, comment_text, notes_value_format)
             
             # Write shot name
             for col in range(3, 7):
@@ -909,7 +921,7 @@ class ShotSheetMaker:
             # Add conditional formatting for status cells
             for status, format_obj in status_formats.items():
                 if status != 'Not Started':  # Skip default format
-                    worksheet.conditional_format(current_row + 3, 1, current_row + 3, 6, {
+                    worksheet.conditional_format(current_row + 3, 1, current_row + 3, 7, {
                         'type': 'cell',
                         'criteria': 'equal to',
                         'value': f'"{status}"',
@@ -931,11 +943,10 @@ class ShotSheetMaker:
 
             # Add conditional formatting for artist cells
             artist_row = current_row + 4
-            top_left = f'B{artist_row + 1}'  # A1 ref for the top-left of this CF range (Excel rows are 1-based)
-
+            top_left = f'B{artist_row + 1}'  
             worksheet.conditional_format(
                 artist_row, 1,    
-                artist_row, 6,    
+                artist_row, 7,    
                     {   
                     'type': 'formula',
                     'criteria': f'=AND({top_left}<>"", {top_left}<>"Not Assigned")',
@@ -967,7 +978,7 @@ class ShotSheetMaker:
             # Add black divider row to bottom of each shot
             div = current_row + 5
             worksheet.set_row(div, 15)
-            worksheet.merge_range(div, 0, 7, '', divider_format)
+            worksheet.merge_range(div, 0, div, 7, '', divider_format)
             
             # Move to next group (5 rows for content + 1 for divider)
             current_row += 6
