@@ -630,8 +630,8 @@ class ShotSheetMaker:
 
         # Create worksheet
         worksheet = workbook.add_worksheet(seq_name)
-        worksheet.set_column('A:A', self.column_width * 1.3)  # Thumbnail column 
-        worksheet.set_column('B:H', 20)  # Department columns
+        worksheet.set_column('A:A', self.column_width * 1.3) 
+        worksheet.set_column('B:H', 20)  
 
         #-------------------------------------
         # FORMATS   
@@ -730,7 +730,7 @@ class ShotSheetMaker:
 
         artist_assigned_format = workbook.add_format({
             'font_name': 'Helvetica',
-            'bg_color': "#A79BAE",   # your pastel for any assigned artist
+            'bg_color': "#A79BAE",   
             'font_color': '#000000',
             'bold': True,
             'valign': 'vcenter',
@@ -833,9 +833,6 @@ class ShotSheetMaker:
             # Get frame count from Shot Length (index 11)
             length_info = str(self.shot_dict[shot_name][11])  
             frame_count = length_info.split(' - ')[1].split(' ')[0]  
-            
-            # Set specific width for source name column
-            # worksheet.set_column(3, 3, 20)  
 
             # Write the metadata values
             worksheet.write(current_row + 1, 3, source_name, metadata_value_format) 
